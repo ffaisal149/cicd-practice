@@ -9,6 +9,7 @@ jobs:
     runs-on: ubunto-latest
 
     steps:
-     -name: print first job
-      run: echo "Welcome to firt job" 
+      - name: print first job
+        run: echo "welcome to first job"
+      
     
