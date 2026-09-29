@@ -18,6 +18,18 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+        mssql:
+          image: mcr.microsoft.com/mssql/server:2022-latest
+          env:
+            SA_PASSWORD: "Ci_Only_Str0ng!"
+            ACCEPT_EULA: "Y"
+          ports:
+            - 1433:1433
+    env:
+        SA_PASSWORD: "Ci_Only_Str0ng!"
+        DATABASE_URL: "mssql+pymssql://sa:Ci_Only_Str0ng!@localhost:1433/practice"
+    
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -29,3 +41,32 @@ jobs:
         run: pip install -r requirements.txt
       - name: Lint
         run: ruff check .
+      
+      - name: Wait for SQL Server
+        run: |
+          for i in {1..30}; do
+            if /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -Q "SELECT 1" > /dev/null 2>&1; then
+              echo "SQL Server is up and running."
+              break
+            fi
+            echo "Waiting for SQL Server to start..."
+            sleep 2
+          for i in $(seq 1 30); do 
+            docker exec ${{ job.services.mssql.id }} /opt/mssql-tools18/bin/sqlcmd
+                -S localhost -U sa -P "$SA_PASSWORD" -Q "SELECT 1" && exit 0
+                echo "Not ready yet ready ($i/30)" sleep 2
+          done
+            echo "SQL Server did not start in time."; exit 1
+      - name: Create practice database
+        run: |
+          docker exec ${{ job.services.mssql.id }} /opt/mssql-tools18/bin/sqlcmd
+            -S localhost -U sa -P "$SA_PASSWORD" -C -Q "IF DB_ID('practice') IS NULL CREATE DATABASE practice"
+      - name: Migrations apply from  an empty database
+        run: alembic upgrade head
+      - name: Models and migrations agree 
+        run: alembic check 
+      - name: Tests
+        run: pytest -q
+           
+        
+
